@@ -8,22 +8,14 @@ import { openDB } from "idb";
 import { BiLogOutCircle } from "react-icons/bi";
 import { FaSearch } from "react-icons/fa";
 import useSocket from "../hooks/useSocket";
-import Button from "react-bootstrap/Button";
-import Modal from "react-bootstrap/Modal";
-
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3000";
 const APIBASE = SOCKET_URL;
 const Home = () => {
   const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
   const [contacts, setContacts] = useState([]);
   const [islogin, setIsLogin] = useState(false);
   const { socket, isConnected, NotificationModal } = useSocket();
   const navigate = useNavigate();
-  const [show, setShow] = useState(false);
-
-  const handleClose = () => setShow(false);
-  const handleShow = () => setShow(true);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -44,12 +36,25 @@ const Home = () => {
           let allContacts = data.contacts;
 
           // Create an array of promises for fetching last messages
+
+          const createRoomNumber = (phone, from) => {
+            // concate both number and add them in asssending order
+            if (from > phone) {
+              return `${from}-${phone}`;
+            } else {
+              return `${phone}-${from}`;
+            }
+          };
           const lastMessagePromises = Object.keys(allContacts).map(
             async (contact) => {
-              const lastMessage = await fetchLastMessageByConversation(
-                phone,
-                allContacts[contact].phone
+              const key = createRoomNumber(phone, contact);
+              const db = await dbPromise;
+              const allChats = await db.getAll("chats");
+              const conversationChats = allChats.filter(
+                (msg) => msg.conversationId === key && msg.type === "text"
               );
+              const lastMessage =
+                conversationChats[conversationChats.length - 1];
               if (lastMessage) {
                 allContacts[contact].lastMessage = lastMessage.message;
                 allContacts[contact].sendTime = lastMessage.time;
@@ -85,39 +90,6 @@ const Home = () => {
       db.createObjectStore("chats", { keyPath: "id", autoIncrement: true });
     },
   });
-
-  const fetchLastMessageByConversation = async (fromPhone, toPhone) => {
-    const db = await dbPromise;
-    const conversationId = `${fromPhone}-${toPhone}`;
-    const allChats = await db.getAll("chats");
-    const filteredMessages = allChats.filter(
-      (msg) => msg.conversationId === conversationId
-    );
-
-    if (filteredMessages.length > 0) {
-      const lastMessage = filteredMessages.sort(
-        (a, b) => new Date(b.time) - new Date(a.time)
-      )[0];
-
-      return lastMessage;
-    }
-    return null;
-  };
-
-  const handleLogin = async () => {
-    try {
-      const { data } = await axios.post(`${APIBASE}/api/auth/login`, {
-        phone,
-        password,
-      });
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("phone", phone);
-      navigate("/");
-      setIsLogin(true);
-    } catch (error) {
-      alert("Login failed: " + error.response.data);
-    }
-  };
 
   const addContact = async () => {
     const newContact = prompt("Enter contact phone number");
@@ -161,23 +133,6 @@ const Home = () => {
           </div>
         </div>
 
-        <div className="discussion message-active">
-          <div
-            className="photo-contact"
-            style={{
-              backgroundImage:
-                'url("https://images.unsplash.com/photo-1435348773030-a1d74f568bc2?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1050&q=80")',
-            }}
-          >
-            <div className="online" />
-          </div>
-          <div className="desc-contact">
-            <p className="name">Megan Leib</p>
-            <p className="message">9 pm at the bar if possible 😳</p>
-          </div>
-          <div className="timer">12 sec</div>
-        </div>
-
         {!contacts && !contacts.length
           ? null
           : contacts.map((contact) => (
@@ -193,27 +148,18 @@ const Home = () => {
                       'url("https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=1050&q=80")',
                   }}
                 >
-                  <div className="online" />
+                  <div className="msg-status- online" />
                 </div>
                 <div className="desc-contact">
                   <p className="name">{contact[1].username}</p>
                   <p className="message">{contact[1].lastMessage}</p>
-                  {/* <pre
-                    onClick={() => alert(JSON.stringify(contacts[contact]))}
-                  >{`${JSON.stringify(contacts[contact])}`}</pre> */}
                 </div>
 
                 <div className="timer">
                   {" "}
-                  <Timeformater type="home" inputDate={contact[1].updatedAt} />
+                  <Timeformater type="home" inputDate={contact[1].sendTime} />
                 </div>
               </div>
-              // <li key={contact}>
-              //   <span onClick={() => navigate(`/chat/${contact}`)}>{contact}</span>
-              //   <button onClick={() => navigate(`/video-call/${contact}`)}>
-              //     Video Call
-              //   </button>
-              // </li>
             ))}
 
         {/* Add user Floating button */}

@@ -8,7 +8,7 @@ export default function Timeformater({ inputDate, type = "chat" }) {
     const timeDifference = Math.floor((now.getTime() - time.getTime()) / 1000); // difference in seconds
 
     if (timeDifference < 60) {
-      return type === "chat" ? "now" : "online";
+      return type === "chat" ? "now" : "now";
     } else if (timeDifference < 120) {
       return "1 minute ago";
     } else if (timeDifference < 300) {

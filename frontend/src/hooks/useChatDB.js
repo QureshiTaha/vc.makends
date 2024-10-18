@@ -44,11 +44,25 @@ const useChatDB = (conversationId) => {
         conversationId,
       };
       await db.add("chats", messageToSave);
-      console.log(message);
+      const Last = await getLastMessage();
+      console.log("GEt message", Last);
 
       setMessages((prev) => [...prev, message]);
     } catch (error) {
       console.error("Failed to add message to DB:", error);
+    }
+  };
+
+  const getLastMessage = async () => {
+    try {
+      const db = await dbPromise;
+      const allChats = await db.getAll("chats");
+      const conversationChats = allChats.filter(
+        (msg) => msg.conversationId === conversationId
+      );
+      return conversationChats[conversationChats.length - 1];
+    } catch (error) {
+      console.error("Failed to get last message from DB:", error);
     }
   };
 
@@ -72,7 +86,25 @@ const useChatDB = (conversationId) => {
     }
   };
 
-  return { messages, addMessage, clearChats };
+  const clearInfoMsg = async () => {
+    try {
+      const db = await dbPromise;
+      const allChats = await db.getAll("chats");
+      const conversationChats = allChats.filter(
+        (msg) => msg.conversationId === conversationId && msg.type === "info"
+      );
+      if (conversationChats.length === 0) {
+        return; // Exit if there are no messages to delete
+      }
+      await Promise.all(
+        conversationChats.map((msg) => db.delete("chats", msg.id))
+      );
+    } catch (error) {
+      console.error("Failed to clear chats from DB:", error);
+    }
+  };
+
+  return { messages, addMessage, clearChats, getLastMessage, clearInfoMsg };
 };
 
 export default useChatDB;

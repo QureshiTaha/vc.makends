@@ -2,10 +2,8 @@ import React, {
   useEffect,
   useState,
   useRef,
-  useMemo,
   useCallback,
 } from "react";
-import io from "socket.io-client";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   FaFileUpload,
@@ -20,9 +18,6 @@ import Timeformater from "../../utils/Timeformater.js";
 import useChatDB from "../../hooks/useChatDB.js";
 import useSocket from "../../hooks/useSocket";
 import NotificationHandler from "../../utils/NotificationHandler.js";
-// const SOCKET_URL =  "https://vc-api.makends.com";
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3000";
-// const socket = io(SOCKET_URL);
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -35,7 +30,6 @@ const Chat = () => {
   const timeOut = 60000;
   const mintimeOut = 10000;
   const messagesEndRef = useRef(null);
-  const offlineMessages = useRef([]);
   const { socket, isConnected, NotificationModal } = useSocket();
   const { notifyMe } = NotificationHandler();
 
@@ -60,16 +54,31 @@ const Chat = () => {
   // });
 
   const conversationId = createRoomNumber(from, phone);
-  const { messages, addMessage, clearChats } = useChatDB(conversationId);
+  const { messages, addMessage, clearChats, clearInfoMsg } =
+    useChatDB(conversationId);
   useEffect(() => {
     const room = createRoomNumber(from, phone);
     socket.emit("msg-join", { phone, from, room });
   }, [phone]);
 
   const handleReceiveMessage = useCallback((data) => {
-    const { from, message, sendTime, type } = data;
-    const newMessage = { from, message, time: sendTime, type };
-    addMessage(newMessage);
+    const { from, message, time, type } = data;
+    const newMessage = { from, message, time, type };
+    const cases = {
+      text: () => addMessage(newMessage),
+      video: () => addMessage(newMessage),
+      audio: () => addMessage(newMessage),
+      file: () => addMessage(newMessage),
+      image: () => addMessage(newMessage),
+      info: () => addMessage(newMessage),
+    };
+    if (newMessage.type) {
+      console.log("newMessage.type", newMessage.type);
+      cases[newMessage.type]();
+      if (newMessage.type === "info") {
+        clearInfoMsg();
+      }
+    }
   }, []);
 
   const handleSenderUser = useCallback((data) => {
@@ -109,11 +118,7 @@ const Chat = () => {
       socket.off("user-joined", handleJoinUser);
       socket.off("user-left-chat", handleUserLeft);
     };
-  }, [
-    handleReceiveMessage,
-    handleSenderUser,
-    handleJoinUser,
-  ]);
+  }, [handleReceiveMessage, handleSenderUser, handleJoinUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,6 +146,17 @@ const Chat = () => {
   }, [lastStatusChecked, phone, from]);
 
   const sendMessage = (e) => {
+    if (!isConnected) {
+      notifyMe({
+        title: "No Internet Connection -Server unavailable",
+        message: "Please check your internet connection and try again",
+        senderName: receiver.username ? receiver.username : phone,
+        onclickRoute: "/chat/" + phone,
+      });
+      alert("No Internet Connection -Server unavailable");
+      e.preventDefault();
+      return;
+    }
     if (message.trim()) {
       const newMessage = {
         from,
@@ -166,7 +182,6 @@ const Chat = () => {
     // Handle file upload logic
   };
   useEffect(() => {
-    console.log("receiverUpdated", receiver);
     console.log("receiver?.joined", receiver?.joined, from);
   }, [receiver]);
 

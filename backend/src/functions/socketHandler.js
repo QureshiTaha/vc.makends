@@ -1,5 +1,5 @@
 const functions = require("./functions");
-const fs = require("fs");
+const fs = require("fs").promises;
 const randomId = () => {
   return (
     Math.random().toString(36).substring(2, 15) +
@@ -17,21 +17,49 @@ const createRoomNumber = (phone, from) => {
 };
 
 let allusers = {};
+let pendingMsg = {};
 let videoUsers = {};
 JSON_FILE_PATH = "users.json";
-
+PENDING_MSG_PATH = "pending.json";
 // open local fs file forall users.json
 const loadAllUsers = async () => {
-  // Create promise to read file
-  allusers = await JSON.parse(fs.readFileSync(JSON_FILE_PATH, "utf8"));
+  try {
+    const usersData = await fs.readFile(JSON_FILE_PATH, "utf8");
+    allusers = JSON.parse(usersData);
+    const pendingData = await fs.readFile(PENDING_MSG_PATH, "utf8");
+    pendingMsg = JSON.parse(pendingData);
+  } catch (error) {
+    console.error("Error loading data:", error);
+  }
 };
 
+// Save all users to JSON file
 const saveAllUsers = async () => {
-  await Promise.all([
-    fs.writeFileSync(JSON_FILE_PATH, JSON.stringify(allusers), (err) => {
-      if (err) throw err;
-    }),
-  ]);
+  try {
+    await fs.writeFile(JSON_FILE_PATH, JSON.stringify(allusers, null, 2));
+  } catch (error) {
+    console.error("Error saving users:", error);
+  }
+};
+
+const addPendingMsg = async (key, value) => {
+  if (pendingMsg.hasOwnProperty(key)) {
+    pendingMsg[key].push(value);
+  } else {
+    pendingMsg[key] = [value];
+  }
+  await fs.writeFile("pending.json", JSON.stringify(pendingMsg), (err) => {
+    if (err) throw err;
+  });
+};
+
+const removePendingMsg = async (key) => {
+  if (pendingMsg.hasOwnProperty(key)) {
+    pendingMsg[key] = [];
+  }
+  await fs.writeFile("pending.json", JSON.stringify(pendingMsg), (err) => {
+    if (err) throw err;
+  });
 };
 
 const getUser = async (phone) => {
@@ -50,7 +78,6 @@ const getUser = async (phone) => {
 const updateStatus = async (phone, status) => {
   await loadAllUsers();
   if (!phone || !status) return;
-
   if (allusers[phone] && allusers[phone].status !== status) {
     await functions.updateStatus(phone, status);
     allusers[phone] = { ...allusers[phone], status };
@@ -64,23 +91,36 @@ const setupSocketEvents = (io) => {
     // Remove all unused Sockets
 
     socket.on("disconnect", async () => {
-      //   socket.leave(socket.id);
+      socket.leave(socket.id);
       console.log("🔥: A user disconnected");
-      //   var phone = Object.keys(allusers).find(
-      //     (key) => allusers[key].id === socket.id
-      //   );
-      //   console.log(phone);
+      // console.log("socket",socket);
 
-      //   if (phone) {
-      //     await updateStatus(phone, "offline");
-      //   }
+      // allusers.hasOwnProperty(key)
+      // var phone = Object.keys(allusers).find(
+      //   (key) => allusers[key].id === socket.id
+      // );
+      // console.log("phone", phone);
+
+      // if (phone) {
+      //   await updateStatus(phone, "offline");
+      // }
     });
 
     socket.on("msg-join", async ({ phone, from }) => {
       const room = createRoomNumber(from, phone);
+      console.log("Emitted 'msg-join' with:", { phone, from });
       if (!phone || !from) return; // Prevent duplicate room joins
       // from = Emmiter sender
       // phone = receiver sender
+      // Check is user already Join socket
+      Object.keys(allusers).forEach((key) => {
+        // if (allusers[phone] && allusers[phone].id) socket.leave(key);
+        if (allusers[from] && allusers[from].id) {
+          socket.leave(allusers[from].id);
+        }
+        console.log("🚫 Disconnected", key);
+      });
+
       socket.join(room); //Join Chat screen
       await updateStatus(from, "online");
       const fromUser = await getUser(from);
@@ -102,6 +142,20 @@ const setupSocketEvents = (io) => {
         user: allusers[from],
         receiver: allusers[phone],
       });
+      const roomSize = io.sockets.adapter.rooms.get(room)
+        ? io.sockets.adapter.rooms.get(room).size
+        : 0;
+      if (
+        pendingMsg.hasOwnProperty(room) &&
+        pendingMsg[room].length &&
+        roomSize > 1
+      ) {
+        for (let i = 0; i < pendingMsg[room].length; i++) {
+          io.to(room).emit("receive-message", pendingMsg[room][i]);
+          // console.log("Sending", i, pendingMsg[room][i]);
+        }
+        removePendingMsg(room);
+      }
       saveAllUsers();
     });
 
@@ -126,11 +180,17 @@ const setupSocketEvents = (io) => {
       saveAllUsers();
     });
 
-    socket.on("send-message", (data) => {
+    socket.on("send-message", async (payload) => {
+      const originalMessage = payload;
+      var data = JSON.parse(JSON.stringify(payload));
       const { to, from } = data;
       const room = createRoomNumber(from, to);
-      const sendTime = new Date(); // Get the current time
-      data.sendTime = sendTime;
+      await addPendingMsg(room, originalMessage);
+      var clearMsg = {
+        message: "clearInfo",
+        time: new Date(),
+        type: "clearInfo",
+      };
       // ping if user is online
       // const newMessage = {
       //   from,
@@ -140,7 +200,9 @@ const setupSocketEvents = (io) => {
       //   type: "text",
       // };
       try {
-        const roomSize = io.sockets.adapter.rooms.get(room).size;
+        const roomSize = io.sockets.adapter.rooms.get(room)
+          ? io.sockets.adapter.rooms.get(room).size
+          : 0;
         console.log("Room Size", roomSize);
 
         if (roomSize < 2) {
@@ -149,14 +211,21 @@ const setupSocketEvents = (io) => {
             "user is Away they'll see the msg when they come online";
           data.to = data.from;
           io.to(room).emit("receive-message", data);
-
-          // console.log("Room Size", roomSize);
         } else {
-          io.to(room).emit("receive-message", data);
+          if (pendingMsg.hasOwnProperty(room) && pendingMsg[room].length) {
+            for (let i = 0; i < pendingMsg[room].length; i++) {
+              io.to(room).emit("receive-message", pendingMsg[room][i]);
+              // console.log("Sending", i, pendingMsg[room][i]);
+            }
+            removePendingMsg(room);
+            // io.to(room).emit("receive-message", clearMsg);
+          }
+          // io.to(room).emit("receive-message", data);
           // Store msg to send later
         }
         saveAllUsers();
       } catch (error) {
+        console.log("Error", error);
         io.to(room).emit("error", {
           message: "User not found",
           data,

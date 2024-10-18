@@ -73,8 +73,12 @@ module.exports = {
     const originalLog = console.log;
     const originalError = console.error;
     console.log = function (...args) {
-      originalLog.apply(console, args);
-      logStream.write(`[LOG] ${JSON.stringify(args)}\n`);
+      try {
+        originalLog.apply(console, args);
+        // logStream.write(`[LOG] ${JSON.stringify(args)}\n`); //Logger
+      } catch (error) {
+        console.log("Logging Error",error);        
+      }
       // process.stdout.write(`[LOG] ${JSON.stringify(args)}\n`);
     };
     console.error = function (...args) {
