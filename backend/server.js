@@ -16,69 +16,47 @@ const io = new Server(server, {
   },
 });
 
-const randomId = () => {
-  return (
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15)
-  );
-};
-
 var allusers = {};
 var videoUsers = {};
-
-var sessionStore = {};
 
 app.use(cors({ origin: "*", credentials: true }));
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 // Remove all unused Sockets
 
-// io.use(async (socket, next) => {
-//   const sessionID = socket.handshake.auth.sessionID;
-//   if (sessionID) {
-//     const session = sessionStore[sessionID];
-//     if (session) {
-//       socket.sessionID = sessionID;
-//       socket.userID = session.userID;
-//       socket.username = session.username;
-//       return next();
-//     }
-//   }
-//   const username = socket.handshake.auth.username;
-//   if (!username) {
-//     return next(new Error("invalid username"));
-//   }
-//   socket.sessionID = randomId();
-//   socket.userID = randomId();
-//   socket.username = username;
-//   next();
-// });
-
 io.on("connection", (socket) => {
   console.log(`⚡: ${socket.id} user just connected!`);
   // Remove all unused Sockets
 
-  // sessionStore[socket.sessionID] = {
-  //   userID: socket.userID,
-  //   username: socket.username,
-  //   connected: true,
-  // };
+  socket.on("disconnect", async () => {
+    socket.leave(socket.id);
+    console.log("🔥: A user disconnected");
+    phone = Object.keys(allusers).find((key) => allusers[key].id === socket.id);
+    if (phone) {
+      await functions.updateStatus(phone, "offline");
+    }
+  });
 
-  // console.log("session", {
-  //   sessionID: socket.sessionID,
-  //   userID: socket.userID,
-  // });
+  socket.on("join-user", async (from) => {
+    if (!from || allusers[from]) return; // Prevent duplicate joins
 
-  // socket.join(socket.userID);
+    if (!from) {
+      socket.emit("error", { message: "from is required." });
+      return;
+    }
+    console.log(`⚡⚡⚡:${from} joined socket connection`);
+    allusers[from] = { username: from, id: socket.id, status: "online" };
+    io.emit("joined", allusers);
+  });
 
-  socket.on("msg-join", async ({ phone, from, room }) => {
+  socket.on("msg-join", async ({ phone, from }) => {
     if (!phone || !from || allusers[from]?.id === socket.id) return; // Prevent duplicate room joins
     // from = Emmiter sender
     // phone = receiver sender
     if (allusers[from]) {
       allusers[from].status = "online";
       await functions.updateStatus(from, "online");
-      socket.join(room); // Join the room based on phone number
+      socket.join(phone); // Join the room based on phone number
       // Loop throug contact list and send user-reconnected
       if (allusers[from].contacts) {
         for (let i = 0; i < allusers[from].contacts.length; i++) {
@@ -108,32 +86,11 @@ io.on("connection", (socket) => {
         allusers[from] = { ...user.dataValues, id: socket.id };
         await functions.getUser(phone).then((receiver) => {
           if (receiver) {
-            io.to(phone).emit("user-joined", { user, receiver });
+            io.to(phone).emit("user-joined", { user, receiver:receiver.dataValues });
           }
         });
       }
     });
-  });
-
-  socket.on("disconnect", async () => {
-    socket.leave(socket.id);
-    console.log("🔥: A user disconnected");
-    phone = Object.keys(allusers).find((key) => allusers[key].id === socket.id);
-    if (phone) {
-      await functions.updateStatus(phone, "offline");
-    }
-  });
-
-  socket.on("join-user", async (from) => {
-    if (!from || allusers[from]) return; // Prevent duplicate joins
-
-    if (!from) {
-      socket.emit("error", { message: "from is required." });
-      return;
-    }
-    console.log(`⚡⚡⚡:${from} joined socket connection`);
-    allusers[from] = { username: from, id: socket.id, status: "online" };
-    io.emit("joined", allusers);
   });
 
   socket.on("msg-leave", async ({ phone, from }) => {
@@ -160,7 +117,14 @@ io.on("connection", (socket) => {
     // ping if user is online
     try {
       if (allusers[to]) {
-        io.to(allusers[to].id).emit("receive-message", data);
+        if (allusers[to].status === "online") {
+          io.to(allusers[to].id).emit("receive-message", data);
+        } else {
+          io.to(allusers[to].id).emit("error", {
+            message: "User is offline",
+            data,
+          });
+        }
       }
     } catch (error) {
       io.to(allusers[from].id).emit("error", {

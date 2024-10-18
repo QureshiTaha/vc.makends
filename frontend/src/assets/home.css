@@ -176,6 +176,12 @@
 .offline {
   background-color: #d00;
 }
+.awaiting {
+  background-color: #ff0;
+}
+.busy {
+  background-color: #ff5733;
+}
 
 .desc-contact {
   height: 43px;

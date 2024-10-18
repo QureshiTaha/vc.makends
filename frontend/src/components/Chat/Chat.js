@@ -6,7 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import io from "socket.io-client";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   FaFileUpload,
   FaHome,
@@ -18,39 +18,51 @@ import Dropdown from "react-bootstrap/Dropdown";
 import { HiDotsVertical } from "react-icons/hi";
 import Timeformater from "../../utils/Timeformater.js";
 import useChatDB from "../../hooks/useChatDB.js";
+import useSocket from "../../hooks/useSocket";
+import NotificationHandler from "../../utils/NotificationHandler.js";
 // const SOCKET_URL =  "https://vc-api.makends.com";
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3000";
-const socket = io(SOCKET_URL);
+// const socket = io(SOCKET_URL);
+
 const Chat = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { phone } = useParams();
   const [receiver, setReceiver] = useState({}); // your friend
-  const [sender, setSender] = useState({}); // your self
   const [lastStatusChecked, setLastStatusChecked] = useState(Date.now());
   const [message, setMessage] = useState("");
   const from = localStorage.getItem("phone");
   const timeOut = 60000;
-  const mintimeOut = 5000;
+  const mintimeOut = 10000;
   const messagesEndRef = useRef(null);
   const offlineMessages = useRef([]);
+  const { socket, isConnected, NotificationModal } = useSocket();
+  const { notifyMe } = NotificationHandler();
 
-  const conversationId = `${from}-${phone}`;
-  const { messages, addMessage, clearChats } = useChatDB(conversationId);
+  if (phone) {
+    localStorage.setItem("recent-phone", phone);
+  }
 
   const createRoomNumber = (phone, from) => {
     // concate both number and add them in asssending order
     if (from > phone) {
-      return `${from}${phone}`;
+      return `${from}-${phone}`;
     } else {
-      return `${phone}${from}`;
+      return `${phone}-${from}`;
     }
   };
+
+  // notifyMe({
+  //   title: "New Message",
+  //   message: message,
+  //   senderName: receiver.username ? receiver.username : phone,
+  //   onclickRoute: "/chat/" + phone,
+  // });
+
+  const conversationId = createRoomNumber(from, phone);
+  const { messages, addMessage, clearChats } = useChatDB(conversationId);
   useEffect(() => {
     const room = createRoomNumber(from, phone);
-    console.log("room", room);
-    // socket.auth = { room };
-    // socket.connect();
-
     socket.emit("msg-join", { phone, from, room });
   }, [phone]);
 
@@ -66,18 +78,10 @@ const Chat = () => {
     console.log(`User ${data.phone} is offline`);
   }, []);
 
-  const handleUserReconnected = useCallback(async () => {
-    console.log(`User ${from} is online`);
-    offlineMessages.current.forEach((msg) => {
-      socket.emit("send-message", msg);
-    });
-    offlineMessages.current = [];
-  }, [from]);
-
   const handleSenderUser = useCallback((data) => {
     const { user } = data;
     console.log("user-status", user);
-    if (user) {
+    if (user.phone === phone) {
       setReceiver(user);
     }
   }, []);
@@ -85,31 +89,39 @@ const Chat = () => {
   const handleJoinUser = useCallback((data) => {
     const { user, receiver } = data;
     if (user) {
-      console.log("User joined", user);
-      setReceiver(receiver);
-      setSender(user);
+      console.log("User joined", user, receiver);
+      if (receiver.phone === phone) {
+        setReceiver(receiver);
+      } else {
+        setReceiver(user);
+      }
+    }
+  }, []);
+
+  const handleUserLeft = useCallback((data) => {
+    const { user } = data;
+    if (user.phone === phone) {
+      setReceiver(user);
     }
   }, []);
 
   useEffect(() => {
     socket.on("receive-message", handleReceiveMessage);
     socket.on("user-disconnected", handleUserDisconnected);
-    socket.on("user-reconnected", handleUserReconnected);
     socket.on("user-status", handleSenderUser);
     socket.on("user-joined", handleJoinUser);
+    socket.on("user-left-chat", handleUserLeft);
 
     return () => {
-      console.log("Cleaning up receive-message listener");
       socket.off("receive-message", handleReceiveMessage);
       socket.off("user-disconnected", handleUserDisconnected);
-      socket.off("user-reconnected", handleUserReconnected);
       socket.off("user-status", handleSenderUser);
       socket.off("user-joined", handleJoinUser);
+      socket.off("user-left-chat", handleUserLeft);
     };
   }, [
     handleReceiveMessage,
     handleUserDisconnected,
-    handleUserReconnected,
     handleSenderUser,
     handleJoinUser,
   ]);
@@ -120,10 +132,14 @@ const Chat = () => {
 
   useEffect(() => {
     const getStatus = async () => {
-      // if (Date.now() - lastStatusChecked > timeOut) {
-        socket.emit("get-status", { phone, from });
+      if (Date.now() - lastStatusChecked > timeOut) {
+        socket.emit("get-status", {
+          phone,
+          from,
+          room: createRoomNumber(from, phone),
+        });
         setLastStatusChecked(Date.now());
-      // }
+      }
     };
 
     // Set up the interval
@@ -152,8 +168,6 @@ const Chat = () => {
         setLastStatusChecked(Date.now());
       }
       // Check if offline then send msg
-      addMessage(newMessage);
-
       setMessage("");
     }
     e.preventDefault();
@@ -162,6 +176,10 @@ const Chat = () => {
   const handleFileUpload = () => {
     // Handle file upload logic
   };
+  useEffect(() => {
+    console.log("receiverUpdated", receiver);
+    console.log("receiver?.joined", receiver?.joined, from);
+  }, [receiver]);
 
   return (
     <section className="homeContainer">
@@ -177,7 +195,12 @@ const Chat = () => {
             >
               <div
                 className={`${
-                  receiver.status ? receiver.status : ""
+                  receiver.status
+                    ? receiver.status === "online" &&
+                      (receiver?.joined == from || !receiver?.joined)
+                      ? receiver.status
+                      : "busy"
+                    : ""
                 } msg-status`}
               ></div>
             </div>
@@ -220,7 +243,9 @@ const Chat = () => {
           {messages.map((msg, index) => (
             <div
               key={index}
-              className={msg.from === from ? "msg right-msg" : "msg left-msg"}
+              className={`msg ${msg.type} ${
+                msg.from === from ? "right-msg" : "left-msg"
+              }`}
             >
               {msg.from !== from ? (
                 <div
@@ -258,6 +283,7 @@ const Chat = () => {
           ))}
           <div ref={messagesEndRef} style={{ height: "60px" }} />
         </main>
+        <NotificationModal />
         <form className="msger-inputarea" onSubmit={sendMessage}>
           <textarea
             rows={message.split("\n").length > 1 ? 3 : 1}

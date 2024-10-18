@@ -7,6 +7,9 @@ import Timeformater from "../utils/Timeformater";
 import { openDB } from "idb";
 import { BiLogOutCircle } from "react-icons/bi";
 import { FaSearch } from "react-icons/fa";
+import useSocket from "../hooks/useSocket";
+import Button from "react-bootstrap/Button";
+import Modal from "react-bootstrap/Modal";
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3000";
 const APIBASE = SOCKET_URL;
@@ -15,7 +18,12 @@ const Home = () => {
   const [password, setPassword] = useState("");
   const [contacts, setContacts] = useState([]);
   const [islogin, setIsLogin] = useState(false);
+  const { socket, isConnected, NotificationModal } = useSocket();
   const navigate = useNavigate();
+  const [show, setShow] = useState(false);
+
+  const handleClose = () => setShow(false);
+  const handleShow = () => setShow(true);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -23,6 +31,8 @@ const Home = () => {
       const phone = localStorage.getItem("phone");
       if (token && phone) {
         setIsLogin(true);
+        socket.emit("msg-join", { phone, from: phone });
+
         try {
           const response = await axios.get(
             `${APIBASE}/api/auth/contacts?phone=${phone}`,
@@ -215,6 +225,7 @@ const Home = () => {
           +
         </button>
       </div>
+      <NotificationModal />
     </section>
   );
 };

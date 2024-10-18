@@ -5,10 +5,11 @@ import Chat from "./components/Chat/Chat";
 import VideoCall from "./components/VideoCall";
 import Register from "./components/Register";
 import Login from "./components/Login";
-import 'bootstrap/dist/css/bootstrap.min.css';
+import "bootstrap/dist/css/bootstrap.min.css";
 import "./assets/home.css";
 import "./assets/chat.css";
 const App = () => {
+
   return (
     <div className="App">
       <BrowserRouter>

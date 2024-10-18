@@ -1,4 +1,4 @@
-const User = require("../src/models/userser");
+const User = require("../models/user");
 
 // Export all user Functions
 module.exports = {
