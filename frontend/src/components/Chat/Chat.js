@@ -68,19 +68,12 @@ const Chat = () => {
 
   const handleReceiveMessage = useCallback((data) => {
     const { from, message, sendTime, type } = data;
-    console.log("Received message:", data);
     const newMessage = { from, message, time: sendTime, type };
     addMessage(newMessage);
   }, []);
 
-  const handleUserDisconnected = useCallback((data) => {
-    socket.disconnect();
-    console.log(`User ${data.phone} is offline`);
-  }, []);
-
   const handleSenderUser = useCallback((data) => {
     const { user } = data;
-    console.log("user-status", user);
     if (user.phone === phone) {
       setReceiver(user);
     }
@@ -89,7 +82,6 @@ const Chat = () => {
   const handleJoinUser = useCallback((data) => {
     const { user, receiver } = data;
     if (user) {
-      console.log("User joined", user, receiver);
       if (receiver.phone === phone) {
         setReceiver(receiver);
       } else {
@@ -107,21 +99,18 @@ const Chat = () => {
 
   useEffect(() => {
     socket.on("receive-message", handleReceiveMessage);
-    socket.on("user-disconnected", handleUserDisconnected);
     socket.on("user-status", handleSenderUser);
     socket.on("user-joined", handleJoinUser);
     socket.on("user-left-chat", handleUserLeft);
 
     return () => {
       socket.off("receive-message", handleReceiveMessage);
-      socket.off("user-disconnected", handleUserDisconnected);
       socket.off("user-status", handleSenderUser);
       socket.off("user-joined", handleJoinUser);
       socket.off("user-left-chat", handleUserLeft);
     };
   }, [
     handleReceiveMessage,
-    handleUserDisconnected,
     handleSenderUser,
     handleJoinUser,
   ]);

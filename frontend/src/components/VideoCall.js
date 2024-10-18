@@ -135,7 +135,6 @@ const VideoCall = () => {
         alert(`Socket error: ${error.message}`);
       });
       socket.on("user-video-call-disconnect", async () => {
-        console.log("User user-video-call-disconnect");
         const pc = await PeerConnection.getInstance();
         pc.close();
         localStream.getTracks().forEach((track) => track.stop());

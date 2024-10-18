@@ -1,16 +1,13 @@
 import React from "react";
 
 export default function NotificationHandler() {
-  document.addEventListener("DOMContentLoaded", function (event) {
-    console.log("onload");
-
+  document.addEventListener("DOMContentLoaded", function () {
     if (!Notification) {
       alert(
         "Desktop notifications not available in your browser. Try Chromium."
       );
       return;
     }
-
     if (Notification.permission !== "granted") Notification.requestPermission();
   });
 
@@ -28,8 +25,6 @@ export default function NotificationHandler() {
         tag: "VC.M",
         renotify: true,
       });
-      console.log("onclickRoute", onclickRoute);
-
       notification.onclick = function () {
         window.open(onclickRoute);
       };

@@ -60,10 +60,7 @@ const useChatDB = (conversationId) => {
       const conversationChats = allChats.filter(
         (msg) => msg.conversationId === conversationId
       );
-      console.log("Messages to delete:", conversationChats);
-
       if (conversationChats.length === 0) {
-        console.log("No messages found for this conversationId.");
         return; // Exit if there are no messages to delete
       }
       await Promise.all(

@@ -67,7 +67,6 @@ const Home = () => {
 
           // Update the state with the sorted contacts
           setContacts(sortedContacts);
-          console.log("sortedContacts", sortedContacts);
         } catch (error) {
           console.error("Error fetching contacts:", error);
         }
@@ -133,8 +132,6 @@ const Home = () => {
           )
           .then((res) => JSON.parse(res.data))
           .catch((err) => err.response.data);
-
-        console.log("addContact", addContact);
         if (addContact.status === "success") {
           alert("Contact added successfully");
         } else if (addContact.error) {

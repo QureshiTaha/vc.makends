@@ -82,8 +82,6 @@ const setupSocketEvents = (io) => {
       // from = Emmiter sender
       // phone = receiver sender
       socket.join(room); //Join Chat screen
-      console.log(`User ${from} opens chat of user ${phone} .`);
-
       await updateStatus(from, "online");
       const fromUser = await getUser(from);
       const phoneUser = await getUser(phone);
@@ -109,9 +107,6 @@ const setupSocketEvents = (io) => {
 
     socket.on("msg-leave", async ({ phone, from }) => {
       const room = createRoomNumber(from, phone);
-      console.log(
-        `User with phone ${phone} left the room for ${from} in room ${room}.`
-      );
       await updateStatus(from, "awaiting");
       io.to(room).emit("user-left-chat", {
         user: allusers[from],
@@ -122,12 +117,9 @@ const setupSocketEvents = (io) => {
 
     socket.on("get-status", async ({ phone, from }) => {
       const room = createRoomNumber(from, phone);
-      console.log("Emitted 'get-status' with:", { phone, from });
-
       await functions.getUser(phone).then(async (user) => {
         if (user) {
           allusers[phone] = { ...allusers[phone], ...user.dataValues };
-          console.log(`User ${user.phone} is ${user.status}`);
           io.to(room).emit("user-status", { user: allusers[phone] });
         }
       });
@@ -188,7 +180,6 @@ const setupSocketEvents = (io) => {
 
     // Signaling for video call
     socket.on("send-offer", (data) => {
-      console.log("Offer send from:", data);
       const { from, to } = data;
       // socket.to(from).emit("offer", data); // Send offer to the specified user
       if (videoUsers[to]) {
@@ -243,7 +234,6 @@ const setupSocketEvents = (io) => {
     });
 
     socket.on("answer", (data) => {
-      console.log("Answer received:", data.from, ">", data.to);
       const { from, to, answer } = data;
 
       io.to(videoUsers[from].id).emit("answer", { from, to, answer });
